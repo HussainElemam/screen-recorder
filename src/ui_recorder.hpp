@@ -47,8 +47,8 @@ private:
     GtkWidget *m_micRow = nullptr;
 
     GtkWidget *m_fileChooserBtn = nullptr;
-    GtkWidget *m_checkClipboard = nullptr;
-    GtkWidget *m_checkCountdown = nullptr;
+    GtkWidget *m_switchClipboard = nullptr;
+    GtkWidget *m_switchCountdown = nullptr;
     GtkWidget *m_btnRecord = nullptr;
 
     void buildUI();
