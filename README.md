@@ -71,8 +71,8 @@ sudo dnf install -y \
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/screen_recorder_2.git
-cd screen_recorder_2
+git clone https://github.com/HussainElemam/screen-recorder
+cd screen-recorder
 ```
 
 ### 2. Build the project
