@@ -1,1 +1,0 @@
-/home/hussain/.local/bin/screen-recorder

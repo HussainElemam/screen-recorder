@@ -1,9 +1,0 @@
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/screen-recorder.dir
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/verify_devices.dir
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/test_record.dir
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/edit_cache.dir
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/rebuild_cache.dir
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/list_install_components.dir
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/install.dir
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/install/local.dir
-/home/hussain/Projects/screen_recorder_2/build/CMakeFiles/install/strip.dir
