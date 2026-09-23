@@ -46,6 +46,8 @@ struct RecordingConfig
     CaptureMode captureMode = CaptureMode::FullScreen;
     std::string monitorConnector; // e.g. "DP-1"
     int monitorIndex = 0;
+    int monitorWidth = 0;
+    int monitorHeight = 0;
 
     // Region coordinates (in Mutter global desktop coordinates)
     int regionX = 0;

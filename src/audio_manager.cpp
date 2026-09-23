@@ -5,6 +5,32 @@
 #include <memory>
 #include <algorithm>
 
+namespace
+{
+constexpr int kAudioSampleRate = 48000;
+constexpr int kAudioChannels = 2;
+constexpr int kAudioBitrate = 192000;
+
+std::string rawAudioCaps()
+{
+    return "audio/x-raw,format=S16LE,rate=" + std::to_string(kAudioSampleRate) +
+           ",channels=" + std::to_string(kAudioChannels);
+}
+
+std::string pulseSource(const std::string &device)
+{
+    return "pulsesrc device=\"" + device + "\" do-timestamp=true ! "
+           "queue ! audioconvert ! audioresample ! " +
+           rawAudioCaps();
+}
+
+std::string aacEncoder()
+{
+    return "fdkaacenc bitrate=" + std::to_string(kAudioBitrate) +
+           " afterburner=true ! aacparse ! queue ! mux.audio_0";
+}
+} // namespace
+
 AudioManager::AudioManager()
 {
     refreshDevices();
@@ -118,18 +144,30 @@ bool AudioManager::refreshDevices()
 
 std::string AudioManager::getDefaultSinkMonitor() const
 {
-    if (!m_defaultSink.empty())
+    // The output device can change while the recorder window is open (Bluetooth
+    // headphones are a common example), so resolve it again when recording starts.
+    std::string currentSink = runCommand("pactl get-default-sink 2>/dev/null");
+    if (currentSink.empty())
     {
-        return m_defaultSink + ".monitor";
+        currentSink = m_defaultSink;
+    }
+    if (!currentSink.empty())
+    {
+        return currentSink + ".monitor";
     }
     return "@DEFAULT_SINK@.monitor";
 }
 
 std::string AudioManager::getDefaultSource() const
 {
-    if (!m_defaultSource.empty())
+    std::string currentSource = runCommand("pactl get-default-source 2>/dev/null");
+    if (currentSource.empty())
     {
-        return m_defaultSource;
+        currentSource = m_defaultSource;
+    }
+    if (!currentSource.empty())
+    {
+        return currentSource;
     }
     return "@DEFAULT_SOURCE@";
 }
@@ -147,19 +185,19 @@ std::string AudioManager::buildAudioPipeline(AudioMode mode,
         return "";
 
     case AudioMode::System:
-        return "pulsesrc device=\"" + sysDev + "\" do-timestamp=true ! "
-                                               "audioconvert ! audioresample ! fdkaacenc ! aacparse ! queue ! mux.audio_0";
+        return pulseSource(sysDev) + " ! " + aacEncoder();
 
     case AudioMode::Mic:
-        return "pulsesrc device=\"" + micDev + "\" do-timestamp=true ! "
-                                               "audioconvert ! audioresample ! fdkaacenc ! aacparse ! queue ! mux.audio_0";
+        return pulseSource(micDev) + " ! " + aacEncoder();
 
     case AudioMode::Both:
-        return "audiomixer name=mix ! audioconvert ! audioresample ! fdkaacenc ! aacparse ! queue ! mux.audio_0 "
-               "pulsesrc device=\"" +
-               sysDev + "\" do-timestamp=true ! audioconvert ! audioresample ! queue ! mix. "
-                        "pulsesrc device=\"" +
-               micDev + "\" do-timestamp=true ! audioconvert ! audioresample ! queue ! mix.";
+        // Normalize both inputs before mixing. Without explicit caps, negotiation
+        // produced 44.1 kHz mono at 56 kb/s even when the system monitor was a
+        // 48 kHz stereo source.
+        return "audiomixer name=mix ! audioconvert ! audioresample ! " + rawAudioCaps() +
+               " ! " + aacEncoder() + " " +
+               pulseSource(sysDev) + " ! mix. " +
+               pulseSource(micDev) + " ! mix.";
     }
 
     return "";

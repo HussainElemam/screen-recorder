@@ -5,10 +5,13 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <cmath>
 #include <csignal>
+#include <cerrno>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -310,14 +313,50 @@ void ScreencastService::launchPipeline(guint32 nodeId)
 
     m_outputFilePath = outDir + "/" + ss.str();
 
-    // Construct GStreamer command line with high-bitrate (20 Mbps), smooth 30 fps, and crisp quantization
+    // Software H.264 cannot sustain the native 2880x1920 desktop resolution
+    // on this machine. Cap the longest edge at 1920 while preserving aspect
+    // ratio; 1920x1080 monitors and smaller regions remain unchanged.
+    int sourceWidth = m_config.captureMode == CaptureMode::Region
+                          ? m_config.regionWidth
+                          : m_config.monitorWidth;
+    int sourceHeight = m_config.captureMode == CaptureMode::Region
+                           ? m_config.regionHeight
+                           : m_config.monitorHeight;
+    int outputWidth = sourceWidth;
+    int outputHeight = sourceHeight;
+    if (sourceWidth > 0 && sourceHeight > 0)
+    {
+        constexpr int kMaxVideoEdge = 1920;
+        int longestEdge = std::max(sourceWidth, sourceHeight);
+        double scale = std::min(1.0, static_cast<double>(kMaxVideoEdge) / longestEdge);
+        auto scaledEven = [scale](int value)
+        {
+            return std::max(2, static_cast<int>(std::lround(value * scale / 2.0)) * 2);
+        };
+        outputWidth = scaledEven(sourceWidth);
+        outputHeight = scaledEven(sourceHeight);
+    }
+
+    // Keep capture latency bounded and configure OpenH264 for real-time screen
+    // content. The old high-complexity settings encoded this display at about
+    // 9 fps, which made videorate manufacture long runs of duplicate frames.
     std::ostringstream cmd;
     cmd << "gst-launch-1.0 -e "
         << "mp4mux name=mux faststart=true ! filesink location=\"" << m_outputFilePath << "\" "
         << "pipewiresrc path=" << nodeId << " keepalive-time=1000 do-timestamp=true ! "
-        << "videorate ! video/x-raw,framerate=30/1 ! "
-        << "videoconvert ! "
-        << "openh264enc bitrate=20000000 max-bitrate=35000000 qp-min=8 qp-max=20 complexity=high enable-frame-skip=false multi-thread=0 ! "
+        << "queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
+        << "videorate drop-only=true max-rate=30 ! video/x-raw,framerate=30/1 ! "
+        << "videoscale n-threads=4 ! ";
+
+    if (outputWidth > 0 && outputHeight > 0)
+    {
+        cmd << "video/x-raw,width=" << outputWidth << ",height=" << outputHeight << " ! ";
+    }
+
+    cmd << "videoconvert n-threads=4 ! video/x-raw,format=I420 ! "
+        << "openh264enc bitrate=12000000 max-bitrate=18000000 rate-control=bitrate "
+        << "qp-min=12 qp-max=42 complexity=low usage-type=screen "
+        << "enable-frame-skip=false multi-thread=8 slice-mode=auto gop-size=120 ! "
         << "h264parse ! queue ! mux.video_0";
 
     if (!m_audioPipelineFragment.empty())
@@ -377,17 +416,52 @@ void ScreencastService::stopRecording()
         kill(m_pipelinePid, SIGINT);
 
         // Wait up to 5 seconds for gst-launch to cleanly write MP4 moov atom
+        bool childExited = false;
+        int childStatus = 0;
         for (int i = 0; i < 50; ++i)
         {
-            int status = 0;
-            pid_t res = waitpid(m_pipelinePid, &status, WNOHANG);
-            if (res > 0)
+            pid_t res = waitpid(m_pipelinePid, &childStatus, WNOHANG);
+            if (res == m_pipelinePid)
             {
                 std::cout << "Pipeline terminated cleanly." << std::endl;
+                childExited = true;
+                break;
+            }
+            if (res < 0 && errno != EINTR)
+            {
+                childExited = true;
                 break;
             }
             g_usleep(100000); // 100ms
         }
+
+        // Never leave an overloaded encoder running after the app reports that
+        // recording has stopped. This was allowing audio to continue for several
+        // seconds after video capture ended.
+        if (!childExited)
+        {
+            std::cerr << "Pipeline did not finalize within 5 seconds; terminating it." << std::endl;
+            kill(m_pipelinePid, SIGTERM);
+            for (int i = 0; i < 20; ++i)
+            {
+                pid_t res = waitpid(m_pipelinePid, &childStatus, WNOHANG);
+                if (res == m_pipelinePid || (res < 0 && errno != EINTR))
+                {
+                    childExited = true;
+                    break;
+                }
+                g_usleep(100000);
+            }
+        }
+        if (!childExited)
+        {
+            kill(m_pipelinePid, SIGKILL);
+            while (waitpid(m_pipelinePid, &childStatus, 0) < 0 && errno == EINTR)
+            {
+            }
+        }
+
+        g_spawn_close_pid(m_pipelinePid);
         m_pipelinePid = -1;
     }
 

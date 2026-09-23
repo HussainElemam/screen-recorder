@@ -631,6 +631,8 @@ void RecorderWindow::onRecordClicked()
     if (monInfo)
     {
         config.monitorConnector = monInfo->connector;
+        config.monitorWidth = monInfo->width;
+        config.monitorHeight = monInfo->height;
     }
 
     m_settingsMgr->save();

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(screen-recorder LANGUAGES CXX)
 
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -59,11 +61,21 @@ add_executable(test_record
     tests/test_record.cpp
     src/screencast_service.cpp
     src/audio_manager.cpp
+    src/display_manager.cpp
     src/clipboard_helper.cpp
 )
 target_include_directories(test_record PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${GTK3_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS})
 target_compile_options(test_record PRIVATE -Wall -Wextra ${GTK3_CFLAGS_OTHER} ${GLIB_CFLAGS_OTHER})
 target_link_libraries(test_record PRIVATE ${GTK3_LIBRARIES} ${GLIB_LIBRARIES} pthread)
+
+# Unit tests for audio routing and format negotiation
+add_executable(test_audio_pipeline
+    tests/test_audio_pipeline.cpp
+    src/audio_manager.cpp
+)
+target_include_directories(test_audio_pipeline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(test_audio_pipeline PRIVATE -Wall -Wextra)
+add_test(NAME audio_pipeline COMMAND test_audio_pipeline)
 
 
 
